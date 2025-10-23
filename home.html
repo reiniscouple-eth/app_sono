@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Durma Bem - Sons e Temporizador</title>
+    <!-- Carrega Tailwind CSS para estilização rápida e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carrega a biblioteca Tone.js para geração de som digital -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        /* Define a fonte Inter e cores de fundo escuras para o tema de sono */
+        :root {
+            --primary: #818cf8; /* Indigo 400 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Gray 900 */
+            color: #d1d5db; /* Gray 300 */
+            transition: background-color 0.3s;
+        }
+        .control-panel {
+            min-height: calc(100vh - 4rem); /* Altura total menos padding */
+        }
+        /* Estilização para o botão principal */
+        .play-button {
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+            border: 2px solid var(--primary);
+        }
+        .play-button:hover {
+            transform: scale(1.02);
+        }
+        .select-field {
+             background-color: #374151; /* Gray 700 */
+             border: 1px solid #4b5563; /* Gray 600 */
+             color: #f3f4f6; /* Gray 50 */
+        }
+        /* Esconde o player de áudio (usamos apenas a funcionalidade de reprodução do Tone.js) */
+        audio { display: none; }
+        
+        /* Estilos do Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.85); /* Fundo escuro */
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="p-4 flex flex-col items-center justify-center">
+
+    <!-- Variáveis globais (Firestore não é usado, mas mantidas por requisito) -->
+    <script>
+        const __app_id = 'sleep-aid-app';
+        const __firebase_config = '{}';
+        const __initial_auth_token = '';
+    </script>
+
+
+    <div class="control-panel w-full max-w-sm flex flex-col items-center justify-center space-y-8 rounded-xl p-6 md:p-8 bg-gray-800 shadow-2xl">
+
+        <!-- 1. Placeholder do Logo -->
+        <div class="w-20 h-20 mx-auto bg-gray-700 rounded-full flex items-center justify-center border-2 border-indigo-500">
+            <span class="text-indigo-400 text-sm font-semibold">LOGO AQUI</span>
+        </div>
+
+        <!-- 2. e 3. Título atualizado e com tamanho reduzido -->
+        <h1 class="text-center font-bold text-indigo-400 leading-tight -mt-4">
+            <!-- Linha 1: projeto (tamanho reduzido) -->
+            <span class="text-xl font-medium">projeto</span><br>
+            <!-- Linha 2: SONO E SAÚDE MENTAL (tamanho principal, mas menor que o original 3xl) -->
+            <span class="text-2xl">SONO E SAÚDE MENTAL</span>
+        </h1>
+        <p class="text-center text-gray-400">Selecione o som e o temporizador, e coloque o celular de lado.</p>
+
+        <!-- Seletor de Som (Reduzido para 4 Opções) -->
+        <div class="w-full space-y-2">
+            <label for="sound-select" class="block text-sm font-medium text-gray-300">Tipo de Som (4 Opções):</label>
+            <select id="sound-select" class="select-field mt-1 block w-full py-3 px-4 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-lg">
+                <optgroup label="Cenários Naturais">
+                    <option value="rain">Chuva Calma</option>
+                    <option value="ocean">Ondas do Mar</option>
+                    <option value="stream">Riacho Suave</option>
+                </optgroup>
+                <optgroup label="Sons Musicais">
+                    <option value="synth">Sintetizador Suave (Ambiental)</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <!-- Seletor de Temporizador -->
+        <div class="w-full space-y-2">
+            <label for="timer-select" class="block text-sm font-medium text-gray-300">Temporizador (Desligamento Automático):</label>
+            <select id="timer-select" class="select-field mt-1 block w-full py-3 px-4 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-lg">
+                <option value="1800">30 Minutos</option>
+                <option value="3600">60 Minutos</option>
+                <option value="7200">120 Minutos</option>
+                <option value="0">Infinito (Até Parar)</option>
+            </select>
+        </div>
+
+        <!-- Botão Principal de Iniciar/Parar -->
+        <button id="main-button" class="play-button w-full py-4 text-xl font-extrabold rounded-full bg-indigo-500 text-white hover:bg-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50">
+            INICIAR
+        </button>
+
+        <!-- Display do Temporizador -->
+        <div id="timer-display" class="text-xl font-mono text-gray-400 h-6">
+            00:00
+        </div>
+        
+        <!-- Botão de Mais/Informações (Novo) -->
+        <button id="info-button" class="mt-4 w-10 h-10 text-3xl text-indigo-400 hover:text-indigo-300 transition-colors rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            +
+        </button>
+
+    </div>
+    
+    <!-- Rodapé -->
+    <footer class="mt-8 text-center w-full max-w-sm">
+        <p class="text-xs text-gray-500">Projeto do Curso de Psicologia da Faculdade 9 de Julho</p>
+    </footer>
+
+    <!-- Modal de Informações (Novo) -->
+    <div id="info-modal" class="modal-overlay hidden">
+        <div class="bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4">
+            <h2 class="text-xl font-bold text-indigo-400 border-b border-indigo-400/30 pb-2">Sobre o Projeto</h2>
+            
+            <p class="text-sm text-gray-300 leading-relaxed">
+                Este app do Sono foi desenvolvido no projeto **“Sono e Saúde Mental”**, realizado por alunas de Psicologia da Faculdade Nove de Julho de Bauru/SP, sob a orientação e supervisão do Professor Doutor Anderson Jonas das Neves.
+            </p>
+            
+            <div class="space-y-1">
+                <h3 class="text-md font-semibold text-gray-200 mt-3">Alunas:</h3>
+                <ul class="list-disc list-inside text-sm text-gray-300 ml-4">
+                    <li>Caroline Murakami</li>
+                    <li>Giordana Gomes Velluto</li>
+                    <li>Giulia Junior Rossini</li>
+                    <li>Mariana Flores Barizon</li>
+                    <li>Shirley Filkauskas Reinis</li>
+                </ul>
+            </div>
+
+            <button id="close-modal-button" class="w-full py-2 bg-indigo-500 text-white font-semibold rounded-lg hover:bg-indigo-600 transition-colors mt-4 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                FECHAR
+            </button>
+        </div>
+    </div>
+
+
+    <script>
+        // Inicializa instâncias de som (NoiseSynth para ruídos, AMSynth para música)
+        let soundSource = null;
+        let timerId = null; // ID para o setTimeout de desligamento
+        let intervalId = null; // ID para o setInterval de atualização do display
+
+        const button = document.getElementById('main-button');
+        const timerDisplay = document.getElementById('timer-display');
+        const soundSelect = document.getElementById('sound-select');
+        const timerSelect = document.getElementById('timer-select');
+        
+        // Elementos do Modal
+        const infoButton = document.getElementById('info-button');
+        const infoModal = document.getElementById('info-modal');
+        const closeModalButton = document.getElementById('close-modal-button');
+
+        // Estado do aplicativo
+        let isPlaying = false;
+
+        // --- Funções Auxiliares de Áudio (Tone.js) ---
+
+        /**
+         * Cria e retorna o gerador de som com base na seleção.
+         * @param {string} type - Tipo de som.
+         * @returns {Tone.Signal|Object} A fonte de áudio configurada.
+         */
+        function createSoundSource(type) {
+            // Volume principal, suave e limitado
+            // O volume é setado para -15dB para ser um som ambiente suave
+            const masterVolume = new Tone.Volume(-15).toDestination();
+            const limiter = new Tone.Limiter(-1).connect(masterVolume);
+
+            // Funções utilitárias para Ruídos
+            const createNoise = (noiseType, filterType, frequency) => {
+                const noise = new Tone.Noise(noiseType);
+                if (filterType) {
+                    const filter = new Tone.Filter(frequency, filterType).connect(limiter);
+                    noise.connect(filter);
+                } else {
+                    noise.connect(limiter);
+                }
+                return noise;
+            };
+
+
+            switch (type) {
+                // --- Cenários Naturais (Simulações) ---
+                case 'rain':
+                    // Chuva Calma: Ruído Branco + Lowpass para suavizar as frequências altas
+                    return createNoise("white", "lowpass", 600);
+
+                case 'ocean':
+                    // Ondas do Mar: Ruído Marrom + AutoFilter para efeito de "vaivém" das ondas
+                    const oceanNoise = new Tone.Noise("brown");
+                    const autoFilter = new Tone.AutoFilter({
+                        frequency: "0.1hz", // Movimento lento
+                        depth: 0.5,
+                        baseFrequency: 100,
+                        filter: { type: "lowpass", rolloff: -12 }
+                    }); 
+                    autoFilter.start(); 
+                    oceanNoise.connect(autoFilter);
+                    autoFilter.connect(limiter);
+                    return oceanNoise;
+
+                case 'stream':
+                    // Riacho Suave: Ruído Rosa + Chorus (modulação ampla e lenta para textura de água)
+                    const streamNoise = new Tone.Noise("pink");
+                    const chorus = new Tone.Chorus(2, 2.5, 0.5); // Lento e profundo
+                    chorus.start(); 
+                    streamNoise.connect(chorus);
+                    chorus.connect(limiter);
+                    return streamNoise;
+                
+                // --- Sons Musicais ---
+                case 'synth':
+                    // Sintetizador Suave (Ambiental): Onda senoidal + Longa liberação + Reverb
+                    const ambientSynth = new Tone.AMSynth({
+                        envelope: { attack: 4, decay: 0.5, sustain: 0.5, release: 10 },
+                        oscillator: { type: 'sine' }
+                    }); 
+
+                    const reverb = new Tone.Reverb({ decay: 5, preDelay: 0.1 }).connect(limiter);
+                    ambientSynth.connect(reverb);
+                    
+                    const loop = new Tone.Loop(time => {
+                        // Toca uma nota C3 de longa duração
+                        ambientSynth.triggerAttackRelease("C3", "16m", time);
+                    }, "16m"); 
+
+                    return { source: ambientSynth, loop: loop };
+
+
+                default:
+                    // Padrão: Chuva Calma
+                    return createNoise("white", "lowpass", 600);
+            }
+        }
+
+        // --- Funções de Temporizador ---
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+
+            // Se for mais de 1 hora, mostra HH:MM:SS, caso contrário MM:SS
+            if (h > 0) {
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            }
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function startTimer(duration) {
+            let timeLeft = duration;
+            
+            // Exibe a contagem regressiva
+            const updateDisplay = () => {
+                timerDisplay.textContent = formatTime(timeLeft);
+                if (timeLeft <= 0) {
+                    stopPlayback("Temporizador finalizado.");
+                }
+                timeLeft--;
+            };
+
+            // Certifica-se de que o display está zerado antes de iniciar
+            timerDisplay.textContent = formatTime(duration);
+            
+            // Atualiza a cada segundo
+            intervalId = setInterval(updateDisplay, 1000);
+            
+            // Configura o desligamento real
+            timerId = setTimeout(() => {
+                stopPlayback("Temporizador finalizado.");
+            }, duration * 1000);
+        }
+
+        function clearTimer() {
+            clearTimeout(timerId);
+            clearInterval(intervalId);
+            timerDisplay.textContent = "00:00";
+        }
+
+        // --- Funções de Playback ---
+
+        function startPlayback() {
+            // Garante que o contexto de áudio do navegador está ativo
+            Tone.start();
+
+            const selectedSound = soundSelect.value;
+            const selectedDuration = parseInt(timerSelect.value, 10);
+            
+            try {
+                // 1. Cria a fonte de som
+                soundSource = createSoundSource(selectedSound);
+
+                // 2. Inicia a reprodução
+                // Verifica se é um som baseado em loop (synth) ou ruído
+                if (soundSource.loop) {
+                     // Inicia o loop e o transporte
+                     Tone.Transport.start();
+                     soundSource.loop.start(0);
+                } else {
+                    // Inicia o ruído/som base
+                    soundSource.start(0); 
+                }
+
+                // 3. Gerencia o estado e o UI
+                isPlaying = true;
+                button.textContent = 'PARAR';
+                button.classList.remove('bg-indigo-500', 'hover:bg-indigo-600', 'focus:ring-indigo-500');
+                button.classList.add('bg-red-500', 'hover:bg-red-600', 'focus:ring-red-500');
+
+                // 4. Inicia o temporizador, se não for Infinito (0)
+                clearTimer(); // Limpa qualquer temporizador anterior
+                if (selectedDuration > 0) {
+                    startTimer(selectedDuration);
+                } else {
+                    timerDisplay.textContent = "∞ Infinito";
+                }
+
+            } catch (error) {
+                console.error("Erro ao iniciar a reprodução:", error);
+                // No lugar de alert(), atualizamos o UI
+                button.textContent = 'ERRO! Tente Novamente.';
+                setTimeout(() => stopPlayback(), 3000);
+            }
+        }
+
+        function stopPlayback(message = "Parado.") {
+            
+            // 1. Para a fonte de som (se houver)
+            if (soundSource) {
+                if (soundSource.loop) {
+                    // Caso seja um som com loop (Synth)
+                    soundSource.loop.stop();
+                    Tone.Transport.stop();
+                    soundSource.source.dispose();
+                    soundSource.loop.dispose();
+                } else {
+                    // Caso seja o Noise
+                    // Tone.js auto-parada para alguns efeitos (AutoFilter, Phaser, Tremolo)
+                    if(soundSource.stop) soundSource.stop(); 
+                    if(soundSource.dispose) soundSource.dispose();
+                }
+                soundSource = null;
+            }
+            
+            // 2. Para e limpa o temporizador
+            clearTimer();
+            
+            // 3. Gerencia o estado e o UI
+            isPlaying = false;
+            button.textContent = 'INICIAR';
+            button.classList.remove('bg-red-500', 'hover:bg-red-600', 'focus:ring-red-500');
+            button.classList.add('bg-indigo-500', 'hover:bg-indigo-600', 'focus:ring-indigo-500');
+            
+            // Exibe a mensagem de parada
+            timerDisplay.textContent = message;
+            setTimeout(() => {
+                // Limpa a mensagem após um tempo
+                if (!isPlaying) {
+                    timerDisplay.textContent = "00:00";
+                }
+            }, 3000);
+        }
+
+        // --- Funções do Modal ---
+        function showModal() {
+            infoModal.classList.remove('hidden');
+        }
+
+        function hideModal() {
+            infoModal.classList.add('hidden');
+        }
+
+
+        // --- Event Listeners ---
+
+        button.addEventListener('click', () => {
+            if (isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        });
+        
+        infoButton.addEventListener('click', showModal);
+        closeModalButton.addEventListener('click', hideModal);
+
+        // Permite fechar o modal com a tecla ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !infoModal.classList.contains('hidden')) {
+                hideModal();
+            }
+            // Permite iniciar/parar o áudio com a tecla ESPAÇO
+             if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                // Não permite iniciar/parar se o modal estiver aberto
+                if (infoModal.classList.contains('hidden')) {
+                     button.click();
+                }
+            }
+        });
+
+        // Configurações iniciais de display
+        timerDisplay.textContent = formatTime(parseInt(timerSelect.value, 10));
+
+
+    </script>
+</body>
+</html>
